@@ -1,0 +1,170 @@
+--[[
+  Project Egoist Script - Clean & Profissional
+  Feito para funcionar como scripts top, fácil de editar e entender!
+  - Auto Steal
+  - Auto Dribble
+  - UI mobile-friendly
+  - Atualização dinâmica de referências
+  - Sem ofuscação, fácil de modificar
+]]
+
+-- CONFIGURAÇÕES INICIAIS
+local RemoteNames = {
+    Steal = "StealRemote",       -- AJUSTE para o nome correto do RemoteEvent de roubar!
+    Dribble = "DribbleRemote",   -- AJUSTE para o nome correto do RemoteEvent de driblar!
+}
+local BallNames = {"Ball", "SoccerBall"} -- Liste possíveis nomes da bola no Workspace
+
+local STEAL_RANGE = 14          -- Distância máxima para roubar (ajuste se necessário)
+local DRIBBLE_INTERVAL = 0.35   -- Intervalo entre dribles (segundos)
+
+-- SERVIÇOS
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local LocalPlayer = Players.LocalPlayer
+
+-- VARIÁVEIS
+local autoSteal = false
+local autoDribble = false
+local lastDribble = 0
+
+local Character, HumanoidRootPart
+
+-- === FUNÇÕES BÁSICAS ===
+
+local function getBall()
+    for _, obj in ipairs(workspace:GetChildren()) do
+        for _, bname in ipairs(BallNames) do
+            if obj.Name == bname then return obj end
+        end
+    end
+    return nil
+end
+
+local function refreshCharacter()
+    Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
+end
+
+local function hasBall()
+    local ball = getBall()
+    if not ball or not HumanoidRootPart then return false end
+    -- MELHORE: Se o jogo usar um valor/bool/part no Character, troque esta lógica!
+    return (HumanoidRootPart.Position - ball.Position).Magnitude < 7
+end
+
+local function getNearestOpponentWithBall()
+    local ball = getBall()
+    if not ball then return nil end
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            local dist = (HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
+            if dist <= STEAL_RANGE then
+                -- MELHORE: Se o jogo tiver um valor de "posse da bola", cheque aqui!
+                if (player.Character.HumanoidRootPart.Position - ball.Position).Magnitude < 7 then
+                    return player
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- === FUNÇÕES DE AÇÃO ===
+
+local function fireRemote(remoteName, ...)
+    local remote = ReplicatedStorage:FindFirstChild(remoteName)
+    if remote then
+        pcall(function() remote:FireServer(...) end)
+    end
+end
+
+local function doAutoSteal()
+    if hasBall() then return end
+    local target = getNearestOpponentWithBall()
+    if target then
+        fireRemote(RemoteNames.Steal, target)
+    end
+end
+
+local function doAutoDribble()
+    if not hasBall() then return end
+    if tick() - lastDribble >= DRIBBLE_INTERVAL then
+        fireRemote(RemoteNames.Dribble)
+        lastDribble = tick()
+    end
+end
+
+-- === UI/HUD ===
+
+local function createHUD()
+    pcall(function() if game.CoreGui:FindFirstChild("EgoistHUD") then game.CoreGui.EgoistHUD:Destroy() end end)
+    local sg = Instance.new("ScreenGui", game.CoreGui)
+    sg.Name = "EgoistHUD"
+    sg.ResetOnSpawn = false
+
+    local frame = Instance.new("Frame", sg)
+    frame.Size = UDim2.new(0, 190, 0, 105)
+    frame.Position = UDim2.new(0.04, 0, 0.7, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(33,36,44)
+    frame.BackgroundTransparency = 0.18
+    frame.BorderSizePixel = 0
+
+    local title = Instance.new("TextLabel", frame)
+    title.Size = UDim2.new(1, 0, 0, 28)
+    title.BackgroundTransparency = 1
+    title.Text = "Project Egoist"
+    title.Font = Enum.Font.GothamBold
+    title.TextSize = 17
+    title.TextColor3 = Color3.fromRGB(255,255,255)
+
+    local btn1 = Instance.new("TextButton", frame)
+    btn1.Size = UDim2.new(0.9, 0, 0, 33)
+    btn1.Position = UDim2.new(0.05, 0, 0, 34)
+    btn1.BackgroundColor3 = Color3.fromRGB(44, 130, 220)
+    btn1.TextColor3 = Color3.new(1,1,1)
+    btn1.Font = Enum.Font.Gotham
+    btn1.TextSize = 16
+    btn1.Text = "Auto Steal: OFF"
+
+    btn1.MouseButton1Click:Connect(function()
+        autoSteal = not autoSteal
+        btn1.Text = "Auto Steal: " .. (autoSteal and "ON" or "OFF")
+        btn1.BackgroundColor3 = autoSteal and Color3.fromRGB(60,180,80) or Color3.fromRGB(44,130,220)
+    end)
+
+    local btn2 = Instance.new("TextButton", frame)
+    btn2.Size = UDim2.new(0.9, 0, 0, 33)
+    btn2.Position = UDim2.new(0.05, 0, 0, 71)
+    btn2.BackgroundColor3 = Color3.fromRGB(220, 180, 44)
+    btn2.TextColor3 = Color3.fromRGB(0,0,0)
+    btn2.Font = Enum.Font.Gotham
+    btn2.TextSize = 16
+    btn2.Text = "Auto Dribble: OFF"
+    btn2.MouseButton1Click:Connect(function()
+        autoDribble = not autoDribble
+        btn2.Text = "Auto Dribble: " .. (autoDribble and "ON" or "OFF")
+        btn2.BackgroundColor3 = autoDribble and Color3.fromRGB(60,180,80) or Color3.fromRGB(220,180,44)
+    end)
+end
+
+-- Atualiza referências ao respawnar
+LocalPlayer.CharacterAdded:Connect(function()
+    refreshCharacter()
+end)
+
+-- Inicialização
+refreshCharacter()
+createHUD()
+
+-- Loop principal
+RunService.Heartbeat:Connect(function()
+    if not Character or not HumanoidRootPart or not Character:FindFirstChild("HumanoidRootPart") then
+        refreshCharacter()
+    end
+    if autoSteal then doAutoSteal() end
+    if autoDribble then doAutoDribble() end
+end)
+
+print("[Egoist Script] Pronto! Ajuste os nomes dos RemoteEvents se necessário.")
